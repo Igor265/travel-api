@@ -1,59 +1,217 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Travel Order API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+REST API para gerenciamento de pedidos de viagem corporativa, construída com **Laravel 12** e **Laravel Sanctum**.
 
-## About Laravel
+## Funcionalidades
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Autenticação por token (registro / login / logout)
+- Criação e listagem de pedidos de viagem (visível apenas pelo proprietário)
+- Aprovar ou cancelar pedidos (somente por usuário que não é o dono — o dono não pode alterar o status do próprio pedido)
+- Regra de negócio: pedidos cancelados não podem ser reativados; pedidos aprovados ainda podem ser cancelados
+- Notificação por e-mail ao dono do pedido em toda mudança de status
+- Filtros por status, destino, e intervalos de data de ida e volta
+- Paginação configurável via parâmetro `per_page`
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+---
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Requisitos
 
-## Learning Laravel
+- PHP 8.2+
+- Composer
+- Docker + Docker Compose (para Sail / MySQL)
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+---
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Configuração
 
-## Laravel Sponsors
+### Com Docker (recomendado)
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+# Copiar o arquivo de ambiente
+cp .env.example .env
 
-### Premium Partners
+# Iniciar os containers
+./vendor/bin/sail up -d
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+# Instalar dependências (dentro do container)
+./vendor/bin/sail composer install
 
-## Contributing
+# Gerar a chave da aplicação e rodar as migrations
+./vendor/bin/sail artisan key:generate
+./vendor/bin/sail artisan migrate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### Sem Docker (SQLite)
 
-## Code of Conduct
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+---
 
-## Security Vulnerabilities
+## Executando os Testes
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+# Todos os testes
+php artisan test
 
-## License
+# Com Sail
+./vendor/bin/sail artisan test
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+# Suite específica
+php artisan test tests/Feature/TravelOrder/
+php artisan test tests/Feature/Auth/
+```
+
+---
+
+## Autenticação
+
+Todos os endpoints de pedido de viagem exigem um token Bearer obtido em `/api/register` ou `/api/login`.
+
+```
+Authorization: Bearer <token>
+```
+
+---
+
+## Endpoints
+
+### Auth
+
+#### Registro
+
+```http
+POST /api/register
+Content-Type: application/json
+
+{
+  "name": "Test Jr",
+  "email": "test@test.com",
+  "password": "secret123",
+  "password_confirmation": "secret123"
+}
+```
+
+Resposta `201`:
+```json
+{ "user": { ... }, "token": "<plaintext-token>" }
+```
+
+#### Login
+
+```http
+POST /api/login
+Content-Type: application/json
+
+{ "email": "test@test.com", "password": "password123" }
+```
+
+Resposta `200`:
+```json
+{ "user": { ... }, "token": "<plaintext-token>" }
+```
+
+#### Logout
+
+```http
+DELETE /api/logout
+Authorization: Bearer <token>
+```
+
+Resposta `200`:
+```json
+{ "message": "Logged out." }
+```
+
+---
+
+### Pedidos de Viagem
+
+#### Criar
+
+```http
+POST /api/travel-orders
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "requester_name": "Test Jr",
+  "destination": "Belo Horizonte",
+  "departure_date": "2026-05-01",
+  "return_date": "2026-05-10"
+}
+```
+
+Resposta `201` — novo pedido com `status: "requested"`.
+
+#### Listar (com filtros opcionais)
+
+```http
+GET /api/travel-orders?status=approved&destination=paris&departure_from=2026-04-01&departure_to=2026-06-01
+Authorization: Bearer <token>
+```
+
+Parâmetros de query (todos opcionais):
+
+| Parâmetro        | Tipo    | Descrição                              |
+|------------------|---------|----------------------------------------|
+| `status`         | string  | `requested`, `approved`, `cancelled`  |
+| `destination`    | string  | Correspondência parcial               |
+| `departure_from` | date    | Data de ida mais antiga               |
+| `departure_to`   | date    | Data de ida mais recente              |
+| `return_from`    | date    | Data de volta mais antiga             |
+| `return_to`      | date    | Data de volta mais recente            |
+| `per_page`       | integer | Resultados por página (padrão: 15)    |
+
+A resposta é paginada (`data`, `links`, `meta`).
+
+#### Buscar por ID
+
+```http
+GET /api/travel-orders/{id}
+Authorization: Bearer <token>
+```
+
+Somente o dono do pedido pode visualizá-lo (403 para outros).
+
+#### Atualizar Status
+
+```http
+PATCH /api/travel-orders/{id}/status
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "status": "approved" }
+```
+
+- `status` deve ser `approved` ou `cancelled`
+- Somente um usuário que **não** é dono do pedido pode alterar o status (403 para o dono)
+- Transições inválidas retornam 422
+
+---
+
+## Regras de Autorização
+
+| Ação                    | Quem pode realizar                                        |
+|-------------------------|-----------------------------------------------------------|
+| Criar pedido de viagem  | Qualquer usuário autenticado (torna-se o dono)           |
+| Visualizar pedido       | Somente o dono do pedido                                 |
+| Listar pedidos          | Qualquer usuário autenticado (vê apenas os próprios)     |
+| Aprovar / Cancelar      | Qualquer usuário autenticado **exceto** o dono do pedido |
+
+Essa separação garante que o solicitante não possa aprovar seu próprio pedido de viagem.
+
+## Transições de Status
+
+```
+solicitado → aprovado  ✅
+solicitado → cancelado ✅
+aprovado  → cancelado ✅
+cancelado → qualquer  ❌
+```
+
+---
